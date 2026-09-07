@@ -26,6 +26,8 @@ BG = pygame.transform.scale(pygame.image.load(os.path.join('assets', 'background
 def main():
     run = True
     clock = pygame.time.Clock()
+    level = 1
+    lives = 5
 
     def redraw_window():
         WIN.blit(BG, (0, 0))
