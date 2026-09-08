@@ -57,18 +57,24 @@ class Enemy(Ship):
         super().__init__(x, y, health)
         self.ship_img, self.laser_img = self.COLOR_MAP[color]
         self.mask = pygame.mask.from_surface(self.ship_img)
+
+    def move(self, vel):
+        self.y += vel
         
 
 def main():
     run = True
-    clock = pygame.time.Clock()
-    level = 1
+    level = 0
     lives = 5
     main_font = pygame.font.SysFont('comicsans', 20)
 
-    player = Player(235, 450)
-
+    enemies = []
+    wave_length = 5
+    enemy_vel = 1
     player_vel = 5
+
+    player = Player(235, 450)
+    clock = pygame.time.Clock()
 
     def redraw_window():
         WIN.blit(BG, (0, 0))
@@ -78,13 +84,22 @@ def main():
         WIN.blit(live_label, (7, 7))
         WIN.blit(level_label, (WIDTH - level_label.get_width() - 7, 7))
 
+        for enemy in enemies:
+            enemy.draw(WIN)
+
         player.draw(WIN)
 
         pygame.display.update() 
 
     while run:
         clock.tick(60)
-        redraw_window()
+
+        if len(enemies) == 0:
+            level += 1
+            wave_length += 5
+            for i in range(wave_length):
+                enemy = Enemy(random.randrange(50, WIDTH - 100), random.randrange(-1500, -100), random.choice(["red", "blue", "green"]))
+                enemies.append(enemy)
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -99,5 +114,13 @@ def main():
             player.y -= player_vel
         if keys[pygame.K_DOWN] and player.y + player_vel + player.get_height() < HEIGHT:
             player.y += player_vel
+
+        for enemy in enemies[:]:
+            enemy.move(enemy_vel)
+            if enemy.y + enemy.get_height() > HEIGHT:
+                lives -= 1
+                enemies.remove(enemy)
+
+        redraw_window()
 
 main()
