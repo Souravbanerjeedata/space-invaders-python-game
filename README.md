@@ -1,131 +1,63 @@
-# 🛸 Space Invaders – Advanced Edition
+# Space Invaders – Classic Style
 
-A polished, modern take on the classic **Space Invaders** game built with **Python** and **Pygame**.
+A classic arcade-style **Space Invaders** game in Python + Pygame.
 
-Survive waves of alien ships, dodge lasers, and rack up the highest score you can!
+Designed to feel close to the original 1978 arcade game.
 
 ---
 
-## 🎮 Game Preview
+## Game Preview
 
 <!-- 
-  Add your screenshot or GIF here later.
-  Example:
-  ![Space Invaders Preview](preview.png)
+  Add your screenshot or GIF here.
+  ![Preview](preview.png)
 -->
 
 **[Insert Game Preview Image Here]**
 
-*(Recommended: 800×600 or similar aspect ratio)*
+---
+
+## Features
+
+- Classic black screen + green bunkers
+- Alien formation that moves left/right and drops (original style)
+- Destructible green barriers
+- Score / HI-SCORE display (classic layout)
+- Lives shown as small ships
+- Player laser shooting (fixed)
+- Simple retro sound effects (beeps)
+- Increasing difficulty per wave
+- Clean menu and game-over screens
 
 ---
 
-## ✨ Features
+## Controls
 
-### Gameplay
-- Smooth player movement (Arrow keys **or** WASD)
-- Pixel-perfect mask collision
-- Increasing difficulty (more enemies, faster speed, higher fire rate)
-- Lives + health bar system
-- Score system (100 pts per enemy shot, 50 pts on collision)
-- Clean wave spawning
-
-### Visuals
-- Larger 800×600 window with properly scaled ships & lasers
-- Animated twinkling starfield
-- Particle explosions on hits & deaths
-- Modern HUD (Lives / Level / Score)
-- Glowing health bar under the player
-- Stylish main menu & game-over screens
-
-### Quality of Life
-- Restart after game over (`R`)
-- ESC to return to menu / quit
-- No more ships or text going off-screen
-- Fixed original bugs (list mutation, hard-coded offsets, recursive issues, etc.)
+| Action   | Keys                |
+|----------|---------------------|
+| Move     | Arrow keys or WASD  |
+| Shoot    | SPACE               |
+| Start    | SPACE               |
+| Restart  | R (on game over)    |
+| Quit     | ESC                 |
 
 ---
 
-## 🕹️ Controls
-
-| Action          | Keys                  |
-|-----------------|-----------------------|
-| Move            | `← → ↑ ↓` or `WASD`  |
-| Shoot           | `SPACE`               |
-| Start game      | `SPACE` / Mouse click |
-| Restart         | `R` (on game over)    |
-| Quit / Menu     | `ESC`                 |
-
----
-
-## 📦 Requirements
-
-- Python 3.8+
-- Pygame
+## Run
 
 ```bash
-pip install pygame
-```
-
----
-
-## 🚀 How to Run
-
-```bash
-cd space-invaders
 pip install pygame
 python main.py
 ```
 
 ---
 
-## 📁 Project Structure
+## Notes
 
-```
-space-invaders/
-├── assets/
-│   ├── background-black.png
-│   ├── pixel_laser_*.png
-│   ├── pixel_ship_*.png
-│   └── ...
-├── main.py
-└── README.md
-```
-
----
-
-## 🛠️ What Was Improved
-
-| Original Issue                    | Fixed / Improved                              |
-|-----------------------------------|-----------------------------------------------|
-| Small 550×550 window              | 800×600 with better proportions               |
-| Text & ships felt oversized / off | Consistent scaling, safe margins              |
-| Enemy laser offset hard-coded     | Centered lasers on every ship                 |
-| List modification while iterating | Safe `[:]` copies everywhere                  |
-| `quit()` abrupt exit              | Proper menu → game → game-over flow           |
-| No score                          | Full scoring system                           |
-| Plain visuals                     | Stars, particles, HUD, polished screens       |
-| Health bar could clip             | Smart positioning above/below ship            |
-| No restart                        | Press `R` after game over                     |
-
----
-
-## 💡 Possible Future Ideas
-
-- Power-ups (shield, rapid-fire, multi-shot)
-- Boss waves
-- High-score save (local file)
-- Background music & SFX
-- Different enemy movement patterns
-
----
-
-## 📄 License
-
-Open source – feel free to use, modify and share.
+- Sound is generated in code (no extra files). If your system has no audio device it still runs silently.
+- Assets use the original pixel ships/lasers from the repo, scaled for a clean classic look.
+- No particle glitter / modern effects — kept deliberately minimal and arcade-like.
 
 ---
 
 **Made with ❤️ by Sourav Banerjee**
-
-⭐ Star the repo if you enjoy the game!

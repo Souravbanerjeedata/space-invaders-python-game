@@ -1,6 +1,6 @@
 """
-Space Invaders - Advanced Edition
-Improved code, fixed bugs, better sizing, particles, stars, score, menus, polish.
+Space Invaders - Classic Style
+Looks closer to the original arcade game.
 """
 
 import pygame
@@ -9,165 +9,190 @@ import sys
 import random
 import math
 
-# ==================== INIT ====================
 pygame.init()
 pygame.font.init()
-pygame.mixer.init()
 
-# Larger, better proportioned window
-WIDTH, HEIGHT = 800, 600
+# Optional sound (won't crash if no audio device)
+SOUND_ENABLED = False
+try:
+    pygame.mixer.init()
+    SOUND_ENABLED = True
+except Exception:
+    SOUND_ENABLED = False
+
+# ==================== WINDOW ====================
+WIDTH, HEIGHT = 700, 750
 WIN = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Space Invaders")
-
 FPS = 60
+
 ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
 
-# Colors
-WHITE = (255, 255, 255)
+# Classic colors
 BLACK = (0, 0, 0)
-RED = (255, 60, 60)
-GREEN = (50, 220, 80)
-YELLOW = (255, 230, 50)
-CYAN = (80, 220, 255)
-ORANGE = (255, 150, 40)
-GRAY = (140, 140, 160)
+WHITE = (255, 255, 255)
+GREEN = (0, 255, 0)
+RED = (255, 50, 50)
+YELLOW = (255, 255, 0)
+CYAN = (0, 255, 255)
 
-# ==================== LOAD & SCALE ASSETS ====================
-def load_img(name, size=None):
-    path = os.path.join(ASSETS, name)
-    img = pygame.image.load(path).convert_alpha()
+# Fonts - classic feel, not oversized
+FONT_SCORE = pygame.font.SysFont("courier", 28, bold=True)
+FONT_UI = pygame.font.SysFont("courier", 22, bold=True)
+FONT_TITLE = pygame.font.SysFont("courier", 48, bold=True)
+FONT_MED = pygame.font.SysFont("courier", 32, bold=True)
+FONT_SMALL = pygame.font.SysFont("courier", 18)
+
+
+# ==================== LOAD ASSETS ====================
+def load(name, size=None):
+    img = pygame.image.load(os.path.join(ASSETS, name)).convert_alpha()
     if size:
         img = pygame.transform.scale(img, size)
     return img
 
-# Player ship (larger, clear)
-PLAYER_SHIP = load_img("pixel_ship_yellow.png", (55, 45))
-PLAYER_LASER = load_img("pixel_laser_yellow.png", (8, 24))
+PLAYER_IMG = load("pixel_ship_yellow.png", (48, 40))
+# Tint player toward classic green look
+def tint_surface(surf, color):
+    tinted = surf.copy()
+    arr = pygame.surfarray.pixels3d(tinted)
+    # simple green preference
+    return tinted
 
-# Enemy ships - consistent size so they don't look off-screen / mismatched
-ENEMY_SIZE = (40, 35)
-RED_SHIP = load_img("pixel_ship_red_small.png", ENEMY_SIZE)
-GREEN_SHIP = load_img("pixel_ship_green_small.png", ENEMY_SIZE)
-BLUE_SHIP = load_img("pixel_ship_blue_small.png", ENEMY_SIZE)
+# Keep yellow player but scale well; enemies classic sizes
+ENEMY_W, ENEMY_H = 36, 28
+RED_IMG = load("pixel_ship_red_small.png", (ENEMY_W, ENEMY_H))
+GREEN_IMG = load("pixel_ship_green_small.png", (ENEMY_W, ENEMY_H))
+BLUE_IMG = load("pixel_ship_blue_small.png", (ENEMY_W, ENEMY_H))
 
-RED_LASER = load_img("pixel_laser_red.png", (6, 18))
-GREEN_LASER = load_img("pixel_laser_green.png", (6, 18))
-BLUE_LASER = load_img("pixel_laser_blue.png", (6, 18))
+LASER_Y = load("pixel_laser_yellow.png", (4, 16))
+LASER_R = load("pixel_laser_red.png", (4, 14))
+LASER_G = load("pixel_laser_green.png", (4, 14))
+LASER_B = load("pixel_laser_blue.png", (4, 14))
 
-BG = load_img("background-black.png", (WIDTH, HEIGHT))
+BG = load("background-black.png", (WIDTH, HEIGHT))
 
-# Fonts - smaller, readable sizes
-FONT_SM = pygame.font.SysFont("comicsans", 22)
-FONT_MD = pygame.font.SysFont("comicsans", 32)
-FONT_LG = pygame.font.SysFont("comicsans", 48)
-FONT_XL = pygame.font.SysFont("comicsans", 64)
+# Simple generated beeps (works without external files)
+def make_beep(freq=440, duration_ms=80, volume=0.25):
+    if not SOUND_ENABLED:
+        return None
+    try:
+        import array
+        sample_rate = 22050
+        n_samples = int(sample_rate * duration_ms / 1000)
+        if n_samples < 1:
+            return None
+        period = max(1, sample_rate // freq)
+        amp = int(32000 * volume)
+        samples = array.array("h")
+        for i in range(n_samples):
+            # square wave with quick fade
+            val = amp if ((i // (period // 2)) % 2 == 0) else -amp
+            fade = max(0.0, 1.0 - (i / n_samples))
+            samples.append(int(val * fade))
+        return pygame.mixer.Sound(buffer=samples)
+    except Exception:
+        return None
+
+SHOOT_SOUND = make_beep(880, 50, 0.2)
+HIT_SOUND = make_beep(200, 90, 0.3)
+DIE_SOUND = make_beep(90, 180, 0.35)
+INVADER_SOUND = make_beep(160, 30, 0.12)
 
 
-# ==================== EFFECTS ====================
-class Particle:
-    def __init__(self, x, y, color, life=None, speed=None):
-        self.x = float(x)
-        self.y = float(y)
-        angle = random.uniform(0, math.tau)
-        spd = speed if speed else random.uniform(1.0, 4.5)
-        self.vx = math.cos(angle) * spd
-        self.vy = math.sin(angle) * spd
-        self.life = life if life else random.randint(15, 35)
-        self.max_life = self.life
-        self.size = random.uniform(1.5, 4.0)
-        self.color = color
+def play(sound):
+    if sound and SOUND_ENABLED:
+        try:
+            sound.play()
+        except Exception:
+            pass
 
-    def update(self):
-        self.x += self.vx
-        self.y += self.vy
-        self.vx *= 0.95
-        self.vy *= 0.95
-        self.life -= 1
-        self.size = max(0.3, self.size * 0.96)
+
+# ==================== BARRIERS (classic green bunkers) ====================
+class Barrier:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        self.w = 70
+        self.h = 50
+        # Pixel damage map (classic look)
+        self.grid_w = 14
+        self.grid_h = 10
+        self.cell = 5
+        self.blocks = [[1 for _ in range(self.grid_w)] for _ in range(self.grid_h)]
+        # Carve classic shape (arch)
+        for row in range(self.grid_h):
+            for col in range(self.grid_w):
+                # top corners cut
+                if row < 2 and (col < 2 or col > self.grid_w - 3):
+                    self.blocks[row][col] = 0
+                # bottom arch hole
+                if row > 5 and 3 < col < 10:
+                    self.blocks[row][col] = 0
 
     def draw(self, surf):
-        if self.life <= 0:
-            return
-        alpha = int(255 * (self.life / self.max_life))
-        s = max(1, int(self.size))
-        # soft glow
-        g = pygame.Surface((s * 4, s * 4), pygame.SRCALPHA)
-        pygame.draw.circle(g, (*self.color, alpha // 3), (s * 2, s * 2), s * 2)
-        surf.blit(g, (int(self.x) - s * 2, int(self.y) - s * 2))
-        pygame.draw.circle(surf, (*self.color, alpha), (int(self.x), int(self.y)), s)
+        for row in range(self.grid_h):
+            for col in range(self.grid_w):
+                if self.blocks[row][col]:
+                    pygame.draw.rect(
+                        surf, GREEN,
+                        (self.x + col * self.cell, self.y + row * self.cell, self.cell, self.cell)
+                    )
+
+    def hit(self, lx, ly, lw, lh):
+        """Destroy blocks that the laser touches. Returns True if any block hit."""
+        hit_any = False
+        for row in range(self.grid_h):
+            for col in range(self.grid_w):
+                if not self.blocks[row][col]:
+                    continue
+                bx = self.x + col * self.cell
+                by = self.y + row * self.cell
+                if (lx < bx + self.cell and lx + lw > bx and
+                        ly < by + self.cell and ly + lh > by):
+                    self.blocks[row][col] = 0
+                    # also damage neighbors a bit
+                    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        rr, cc = row + dr, col + dc
+                        if 0 <= rr < self.grid_h and 0 <= cc < self.grid_w:
+                            if random.random() < 0.5:
+                                self.blocks[rr][cc] = 0
+                    hit_any = True
+        return hit_any
 
 
-class Star:
-    def __init__(self):
-        self.reset(True)
-
-    def reset(self, full=False):
-        self.x = random.randint(0, WIDTH)
-        self.y = random.randint(0, HEIGHT) if full else random.randint(-20, -5)
-        self.speed = random.uniform(0.4, 2.2)
-        self.size = random.choice([1, 1, 1, 2, 2, 3])
-        self.bright = random.randint(120, 255)
-        self.phase = random.uniform(0, math.tau)
-
-    def update(self):
-        self.y += self.speed
-        self.phase += 0.07
-        if self.y > HEIGHT + 5:
-            self.reset()
-
-    def draw(self, surf):
-        b = int(self.bright * (0.55 + 0.45 * math.sin(self.phase)))
-        col = (b, b, min(255, b + 40))
-        if self.size >= 2:
-            g = pygame.Surface((self.size * 4, self.size * 4), pygame.SRCALPHA)
-            pygame.draw.circle(g, (*col, 40), (self.size * 2, self.size * 2), self.size * 2)
-            surf.blit(g, (int(self.x) - self.size * 2, int(self.y) - self.size * 2))
-        pygame.draw.circle(surf, col, (int(self.x), int(self.y)), self.size)
-
-
-def spawn_explosion(x, y, particles, color, count=16):
-    for _ in range(count):
-        particles.append(Particle(x, y, color))
-        if random.random() < 0.4:
-            particles.append(Particle(x, y, ORANGE, life=random.randint(10, 22)))
-
-
-# ==================== GAME OBJECTS ====================
+# ==================== LASER ====================
 class Laser:
-    def __init__(self, x, y, img, velocity):
+    def __init__(self, x, y, img, vel):
         self.x = x
         self.y = y
         self.img = img
-        self.vel = velocity
+        self.vel = vel
         self.mask = pygame.mask.from_surface(img)
-        self.width = img.get_width()
-        self.height = img.get_height()
-
-    def draw(self, window):
-        window.blit(self.img, (self.x, self.y))
+        self.w = img.get_width()
+        self.h = img.get_height()
 
     def move(self):
         self.y += self.vel
 
+    def draw(self, window):
+        window.blit(self.img, (int(self.x), int(self.y)))
+
     def off_screen(self):
-        return self.y > HEIGHT + 20 or self.y < -20
+        return self.y < -20 or self.y > HEIGHT + 20
 
-    def get_width(self):
-        return self.width
-
-    def get_height(self):
-        return self.height
+    def rect(self):
+        return pygame.Rect(self.x, self.y, self.w, self.h)
 
 
-def collide(obj1, obj2):
-    """Pixel-perfect collision using masks."""
-    offset_x = int(obj2.x - obj1.x)
-    offset_y = int(obj2.y - obj1.y)
-    return obj1.mask.overlap(obj2.mask, (offset_x, offset_y)) is not None
+def collide(a, b):
+    offset = (int(b.x - a.x), int(b.y - a.y))
+    return a.mask.overlap(b.mask, offset) is not None
 
 
+# ==================== SHIPS ====================
 class Ship:
-    COOLDOWN = 28
+    COOLDOWN = 25
 
     def __init__(self, x, y, health=100):
         self.x = x
@@ -180,10 +205,11 @@ class Ship:
         self.cool_down_counter = 0
         self.mask = None
 
-    def draw(self, window):
-        window.blit(self.ship_img, (self.x, self.y))
-        for laser in self.lasers:
-            laser.draw(window)
+    def get_width(self):
+        return self.ship_img.get_width()
+
+    def get_height(self):
+        return self.ship_img.get_height()
 
     def cooldown(self):
         if self.cool_down_counter >= self.COOLDOWN:
@@ -191,172 +217,210 @@ class Ship:
         elif self.cool_down_counter > 0:
             self.cool_down_counter += 1
 
+    def draw(self, window):
+        window.blit(self.ship_img, (int(self.x), int(self.y)))
+        for laser in self.lasers:
+            laser.draw(window)
+
+
+class Player(Ship):
+    def __init__(self, x, y):
+        super().__init__(x, y, health=100)
+        self.ship_img = PLAYER_IMG
+        self.laser_img = LASER_Y
+        self.mask = pygame.mask.from_surface(self.ship_img)
+        self.COOLDOWN = 20
+
     def shoot(self):
         if self.cool_down_counter == 0:
-            # Center laser on ship
             lx = self.x + self.get_width() // 2 - self.laser_img.get_width() // 2
-            ly = self.y
-            self.lasers.append(Laser(lx, ly, self.laser_img, 0))  # vel set by caller context
+            ly = self.y - 12
+            self.lasers.append(Laser(lx, ly, self.laser_img, -8))
             self.cool_down_counter = 1
+            play(SHOOT_SOUND)
 
-    def get_width(self):
-        return self.ship_img.get_width()
-
-    def get_height(self):
-        return self.ship_img.get_height()
-
-    def move_lasers(self, vel, targets, particles=None, score_ref=None):
-        """Move lasers. targets can be a single Ship or a list of Ships."""
+    def move_lasers(self, enemies, barriers, score_holder):
         self.cooldown()
         for laser in self.lasers[:]:
-            laser.vel = vel
             laser.move()
             if laser.off_screen():
                 self.lasers.remove(laser)
                 continue
 
-            if isinstance(targets, list):
-                for t in targets[:]:
-                    if collide(laser, t):
-                        if particles is not None:
-                            spawn_explosion(
-                                t.x + t.get_width() // 2,
-                                t.y + t.get_height() // 2,
-                                particles,
-                                RED if hasattr(t, "color") else YELLOW,
-                            )
-                        if score_ref is not None:
-                            score_ref[0] += 100
-                        targets.remove(t)
-                        if laser in self.lasers:
-                            self.lasers.remove(laser)
-                        break
-            else:
-                # single target (player)
-                if collide(laser, targets):
-                    targets.health -= 12
-                    if particles is not None:
-                        spawn_explosion(
-                            laser.x + laser.get_width() // 2,
-                            laser.y + laser.get_height() // 2,
-                            particles,
-                            RED,
-                            count=10,
-                        )
+            # Barriers
+            hit_barrier = False
+            for bar in barriers:
+                if bar.hit(laser.x, laser.y, laser.w, laser.h):
+                    hit_barrier = True
+                    break
+            if hit_barrier:
+                if laser in self.lasers:
+                    self.lasers.remove(laser)
+                continue
+
+            # Enemies
+            for enemy in enemies[:]:
+                if collide(laser, enemy):
+                    play(HIT_SOUND)
+                    enemies.remove(enemy)
+                    score_holder[0] += 100
                     if laser in self.lasers:
                         self.lasers.remove(laser)
+                    break
 
-
-class Player(Ship):
-    def __init__(self, x, y, health=100):
-        super().__init__(x, y, health)
-        self.ship_img = PLAYER_SHIP
-        self.laser_img = PLAYER_LASER
-        self.mask = pygame.mask.from_surface(self.ship_img)
-
-    def shoot(self):
-        if self.cool_down_counter == 0:
-            lx = self.x + self.get_width() // 2 - self.laser_img.get_width() // 2
-            ly = self.y - 10
-            laser = Laser(lx, ly, self.laser_img, -7)  # upward
-            self.lasers.append(laser)
-            self.cool_down_counter = 1
-
-    def draw(self, window):
-        super().draw(window)
-        self.draw_healthbar(window)
-
-    def draw_healthbar(self, window):
-        bar_w = self.get_width()
-        bar_h = 6
-        x = self.x
-        y = self.y + self.get_height() + 6
-        # Keep bar on screen
-        if y + bar_h > HEIGHT - 4:
-            y = self.y - 12
-        ratio = max(0, self.health / self.max_health)
-        pygame.draw.rect(window, (40, 40, 50), (x, y, bar_w, bar_h), border_radius=2)
-        if ratio > 0:
-            col = GREEN if ratio > 0.4 else (ORANGE if ratio > 0.2 else RED)
-            pygame.draw.rect(window, col, (x, y, int(bar_w * ratio), bar_h), border_radius=2)
-        pygame.draw.rect(window, WHITE, (x, y, bar_w, bar_h), 1, border_radius=2)
+    def draw_health(self, window):
+        # Small bar under ship, stays on screen
+        bw = self.get_width()
+        bh = 5
+        bx = self.x
+        by = min(self.y + self.get_height() + 4, HEIGHT - 12)
+        ratio = max(0.0, self.health / self.max_health)
+        pygame.draw.rect(window, (40, 40, 40), (bx, by, bw, bh))
+        col = GREEN if ratio > 0.35 else RED
+        pygame.draw.rect(window, col, (bx, by, int(bw * ratio), bh))
 
 
 class Enemy(Ship):
-    COLOR_MAP = {
-        "red": (RED_SHIP, RED_LASER),
-        "green": (GREEN_SHIP, GREEN_LASER),
-        "blue": (BLUE_SHIP, BLUE_LASER),
+    MAP = {
+        "red": (RED_IMG, LASER_R),
+        "green": (GREEN_IMG, LASER_G),
+        "blue": (BLUE_IMG, LASER_B),
     }
 
-    def __init__(self, x, y, color, health=100):
-        super().__init__(x, y, health)
+    def __init__(self, x, y, color):
+        super().__init__(x, y)
         self.color = color
-        self.ship_img, self.laser_img = self.COLOR_MAP[color]
+        self.ship_img, self.laser_img = self.MAP[color]
         self.mask = pygame.mask.from_surface(self.ship_img)
-        self.shoot_chance = 0.004  # base, scales with level
-
-    def move(self, vel):
-        self.y += vel
+        self.direction = 1  # for formation movement
 
     def shoot(self):
         if self.cool_down_counter == 0:
             lx = self.x + self.get_width() // 2 - self.laser_img.get_width() // 2
             ly = self.y + self.get_height()
-            laser = Laser(lx, ly, self.laser_img, 5)
-            self.lasers.append(laser)
+            self.lasers.append(Laser(lx, ly, self.laser_img, 5))
             self.cool_down_counter = 1
 
+    def move_lasers(self, player, barriers):
+        self.cooldown()
+        for laser in self.lasers[:]:
+            laser.move()
+            if laser.off_screen():
+                self.lasers.remove(laser)
+                continue
 
-# ==================== UI HELPERS ====================
-def draw_text(surf, text, font, color, x, y, center=False):
-    img = font.render(text, True, color)
-    if center:
-        x = x - img.get_width() // 2
-    surf.blit(img, (x, y))
-    return img
+            for bar in barriers:
+                if bar.hit(laser.x, laser.y, laser.w, laser.h):
+                    if laser in self.lasers:
+                        self.lasers.remove(laser)
+                    break
+            else:
+                if collide(laser, player):
+                    player.health -= 15
+                    play(HIT_SOUND)
+                    if laser in self.lasers:
+                        self.lasers.remove(laser)
 
 
-def draw_hud(lives, level, score, player_health, max_health):
-    # Top bar background
-    bar = pygame.Surface((WIDTH, 42), pygame.SRCALPHA)
-    bar.fill((0, 0, 20, 160))
-    WIN.blit(bar, (0, 0))
+# ==================== FORMATION (classic row movement) ====================
+class Formation:
+    """Classic left-right then drop movement for the alien grid."""
+    def __init__(self, rows=5, cols=8):
+        self.enemies = []
+        self.dir = 1  # 1 right, -1 left
+        self.speed = 0.6
+        self.drop = 18
+        self.rows = rows
+        self.cols = cols
+        self.spawn()
 
-    draw_text(WIN, f"Lives: {lives}", FONT_SM, WHITE, 12, 10)
-    draw_text(WIN, f"Level: {level}", FONT_SM, CYAN, WIDTH // 2, 10, center=True)
-    score_img = FONT_SM.render(f"Score: {score}", True, YELLOW)
-    WIN.blit(score_img, (WIDTH - score_img.get_width() - 12, 10))
+    def spawn(self):
+        self.enemies.clear()
+        start_x = 80
+        start_y = 90
+        gap_x = 55
+        gap_y = 42
+        colors = ["red", "red", "green", "green", "blue"]
+        for r in range(self.rows):
+            for c in range(self.cols):
+                x = start_x + c * gap_x
+                y = start_y + r * gap_y
+                color = colors[r % len(colors)]
+                self.enemies.append(Enemy(x, y, color))
+
+    def update(self):
+        if not self.enemies:
+            return
+
+        # Find edges
+        min_x = min(e.x for e in self.enemies)
+        max_x = max(e.x + e.get_width() for e in self.enemies)
+
+        should_drop = False
+        if self.dir > 0 and max_x >= WIDTH - 20:
+            should_drop = True
+            self.dir = -1
+        elif self.dir < 0 and min_x <= 20:
+            should_drop = True
+            self.dir = 1
+
+        for e in self.enemies:
+            if should_drop:
+                e.y += self.drop
+            e.x += self.speed * self.dir
+
+    def draw(self, window):
+        for e in self.enemies:
+            e.draw(window)
+
+
+# ==================== UI ====================
+def draw_classic_hud(score, hi_score, lives, level):
+    # Classic top layout similar to original
+    draw = FONT_SCORE.render
+    s1 = draw(f"SCORE<1>", True, WHITE)
+    s2 = draw(f"{score:04d}", True, WHITE)
+    hi = draw(f"HI-SCORE", True, WHITE)
+    hi_v = draw(f"{hi_score:04d}", True, WHITE)
+
+    WIN.blit(s1, (30, 12))
+    WIN.blit(s2, (50, 42))
+    WIN.blit(hi, (WIDTH // 2 - hi.get_width() // 2, 12))
+    WIN.blit(hi_v, (WIDTH // 2 - hi_v.get_width() // 2, 42))
+
+    # Lives as small ships at bottom left
+    lives_label = FONT_SMALL.render(f"{lives}", True, WHITE)
+    WIN.blit(lives_label, (20, HEIGHT - 28))
+    for i in range(max(0, lives - 1)):
+        small = pygame.transform.scale(PLAYER_IMG, (24, 20))
+        WIN.blit(small, (45 + i * 30, HEIGHT - 30))
+
+    # Level
+    lvl = FONT_SMALL.render(f"LEVEL {level}", True, WHITE)
+    WIN.blit(lvl, (WIDTH - lvl.get_width() - 20, HEIGHT - 28))
 
 
 # ==================== SCREENS ====================
-def main_menu(stars):
+def main_menu(hi_score):
     clock = pygame.time.Clock()
-    pulse = 0
     while True:
         clock.tick(FPS)
-        pulse += 0.06
+        WIN.fill(BLACK)
 
-        WIN.blit(BG, (0, 0))
-        for s in stars:
-            s.update()
-            s.draw(WIN)
+        title = FONT_TITLE.render("SPACE INVADERS", True, GREEN)
+        WIN.blit(title, (WIDTH // 2 - title.get_width() // 2, 180))
 
-        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 30, 120))
-        WIN.blit(overlay, (0, 0))
+        sub = FONT_UI.render("CLASSIC STYLE", True, WHITE)
+        WIN.blit(sub, (WIDTH // 2 - sub.get_width() // 2, 250))
 
-        p = 0.7 + 0.3 * math.sin(pulse)
-        title_col = (int(255 * p), int(230 * p), int(60 * p))
-        draw_text(WIN, "SPACE INVADERS", FONT_XL, title_col, WIDTH // 2, HEIGHT // 2 - 100, center=True)
-        draw_text(WIN, "Advanced Edition", FONT_MD, CYAN, WIDTH // 2, HEIGHT // 2 - 40, center=True)
+        prompt = FONT_UI.render("PRESS SPACE TO START", True, YELLOW)
+        WIN.blit(prompt, (WIDTH // 2 - prompt.get_width() // 2, 380))
 
-        if int(pulse * 2) % 2 == 0:
-            draw_text(WIN, "Click or press SPACE to start", FONT_SM, GREEN, WIDTH // 2, HEIGHT // 2 + 40, center=True)
-        else:
-            draw_text(WIN, "Click or press SPACE to start", FONT_SM, (40, 160, 70), WIDTH // 2, HEIGHT // 2 + 40, center=True)
+        hi = FONT_SMALL.render(f"HI-SCORE  {hi_score:04d}", True, WHITE)
+        WIN.blit(hi, (WIDTH // 2 - hi.get_width() // 2, 450))
 
-        draw_text(WIN, "Arrows / WASD  move   |   SPACE  shoot   |   ESC  quit", FONT_SM, GRAY, WIDTH // 2, HEIGHT - 50, center=True)
+        controls = FONT_SMALL.render("ARROWS / WASD  MOVE    SPACE  FIRE    ESC  QUIT", True, (120, 120, 120))
+        WIN.blit(controls, (WIDTH // 2 - controls.get_width() // 2, HEIGHT - 60))
 
         pygame.display.update()
 
@@ -364,8 +428,6 @@ def main_menu(stars):
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                return
             if event.type == pygame.KEYDOWN:
                 if event.key in (pygame.K_SPACE, pygame.K_RETURN):
                     return
@@ -374,28 +436,26 @@ def main_menu(stars):
                     sys.exit()
 
 
-def game_over_screen(stars, score, level, particles):
+def game_over_screen(score, hi_score, level):
     clock = pygame.time.Clock()
     while True:
         clock.tick(FPS)
-        WIN.blit(BG, (0, 0))
-        for s in stars:
-            s.update()
-            s.draw(WIN)
-        for p in particles[:]:
-            p.update()
-            p.draw(WIN)
-            if p.life <= 0:
-                particles.remove(p)
+        WIN.fill(BLACK)
 
-        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-        overlay.fill((20, 0, 0, 180))
-        WIN.blit(overlay, (0, 0))
+        over = FONT_TITLE.render("GAME OVER", True, RED)
+        WIN.blit(over, (WIDTH // 2 - over.get_width() // 2, 220))
 
-        draw_text(WIN, "GAME OVER", FONT_XL, RED, WIDTH // 2, HEIGHT // 2 - 90, center=True)
-        draw_text(WIN, f"Score: {score}", FONT_MD, YELLOW, WIDTH // 2, HEIGHT // 2 - 20, center=True)
-        draw_text(WIN, f"Level reached: {level}", FONT_SM, WHITE, WIDTH // 2, HEIGHT // 2 + 20, center=True)
-        draw_text(WIN, "Press R to Restart   |   ESC to Quit", FONT_SM, GREEN, WIDTH // 2, HEIGHT // 2 + 80, center=True)
+        sc = FONT_MED.render(f"SCORE  {score:04d}", True, WHITE)
+        WIN.blit(sc, (WIDTH // 2 - sc.get_width() // 2, 320))
+
+        hi = FONT_UI.render(f"HI-SCORE  {hi_score:04d}", True, YELLOW)
+        WIN.blit(hi, (WIDTH // 2 - hi.get_width() // 2, 370))
+
+        lvl = FONT_SMALL.render(f"LEVEL REACHED  {level}", True, WHITE)
+        WIN.blit(lvl, (WIDTH // 2 - lvl.get_width() // 2, 420))
+
+        prompt = FONT_UI.render("PRESS R TO RESTART   ESC TO QUIT", True, GREEN)
+        WIN.blit(prompt, (WIDTH // 2 - prompt.get_width() // 2, 520))
 
         pygame.display.update()
 
@@ -405,161 +465,117 @@ def game_over_screen(stars, score, level, particles):
                 sys.exit()
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_r:
-                    return True  # restart
+                    return True
                 if event.key == pygame.K_ESCAPE:
-                    pygame.quit()
-                    sys.exit()
+                    return False
 
 
-def main_game(stars):
+def run_game(hi_score):
     clock = pygame.time.Clock()
-    run = True
+    player = Player(WIDTH // 2 - 24, HEIGHT - 100)
+    formation = Formation(rows=5, cols=8)
+    barriers = [
+        Barrier(90, HEIGHT - 220),
+        Barrier(250, HEIGHT - 220),
+        Barrier(410, HEIGHT - 220),
+        Barrier(570, HEIGHT - 220),
+    ]
 
-    level = 0
-    lives = 5
     score = 0
-    score_ref = [0]  # mutable for laser callbacks
+    score_holder = [0]
+    lives = 3
+    level = 1
+    enemy_shoot_timer = 0
+    invader_step_timer = 0
 
-    enemies = []
-    wave_length = 5
-    enemy_vel = 1.0
-    player_vel = 6
-    laser_vel = 6
-
-    player = Player(WIDTH // 2 - 27, HEIGHT - 90)
-    particles = []
-    lost = False
-    lost_timer = 0
-
-    while run:
+    while True:
         clock.tick(FPS)
-        score = score_ref[0]
+        score = score_holder[0]
 
-        # ---- Events ----
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                return False, score, level, particles
+                return False, score, hi_score  # back to menu
 
-        if lost:
-            lost_timer += 1
-            # keep drawing for a moment then go to game over
-            if lost_timer > FPS * 2:
-                return True, score, level, particles  # signal game over
+        # Input
+        keys = pygame.key.get_pressed()
+        speed = 5
+        if (keys[pygame.K_LEFT] or keys[pygame.K_a]) and player.x > 10:
+            player.x -= speed
+        if (keys[pygame.K_RIGHT] or keys[pygame.K_d]) and player.x + player.get_width() < WIDTH - 10:
+            player.x += speed
+        if keys[pygame.K_SPACE]:
+            player.shoot()
 
-        # ---- Input ----
-        if not lost:
-            keys = pygame.key.get_pressed()
-            if (keys[pygame.K_LEFT] or keys[pygame.K_a]) and player.x - player_vel > 0:
-                player.x -= player_vel
-            if (keys[pygame.K_RIGHT] or keys[pygame.K_d]) and player.x + player_vel + player.get_width() < WIDTH:
-                player.x += player_vel
-            if (keys[pygame.K_UP] or keys[pygame.K_w]) and player.y - player_vel > 40:
-                player.y -= player_vel
-            if (keys[pygame.K_DOWN] or keys[pygame.K_s]) and player.y + player_vel + player.get_height() < HEIGHT - 20:
-                player.y += player_vel
-            if keys[pygame.K_SPACE]:
-                player.shoot()
+        # Formation movement (classic)
+        invader_step_timer += 1
+        step_every = max(8, 28 - level * 2)
+        if invader_step_timer >= step_every:
+            invader_step_timer = 0
+            formation.speed = 0.8 + level * 0.15
+            formation.update()
+            play(INVADER_SOUND)
 
-        # ---- Spawn wave ----
-        if not lost and len(enemies) == 0:
+        # Enemy shooting
+        enemy_shoot_timer += 1
+        if enemy_shoot_timer > max(20, 50 - level * 3) and formation.enemies:
+            enemy_shoot_timer = 0
+            shooter = random.choice(formation.enemies)
+            shooter.shoot()
+
+        # Update lasers
+        player.move_lasers(formation.enemies, barriers, score_holder)
+        for e in formation.enemies:
+            e.move_lasers(player, barriers)
+
+        # Collision ship vs player
+        for e in formation.enemies[:]:
+            if collide(e, player) or e.y + e.get_height() > player.y + 10:
+                play(DIE_SOUND)
+                lives -= 1
+                formation.enemies.remove(e)
+                player.health -= 30
+                if lives <= 0 or player.health <= 0:
+                    hi_score = max(hi_score, score_holder[0])
+                    return True, score_holder[0], hi_score
+
+        # Next wave
+        if not formation.enemies:
             level += 1
-            wave_length = 5 + (level - 1) * 3
-            enemy_vel = min(1.0 + (level - 1) * 0.15, 3.5)
-            for _ in range(wave_length):
-                ex = random.randrange(40, WIDTH - 60)
-                ey = random.randrange(-1400 - level * 80, -80)
-                color = random.choice(["red", "blue", "green"])
-                e = Enemy(ex, ey, color)
-                e.shoot_chance = min(0.004 + level * 0.0015, 0.02)
-                enemies.append(e)
+            formation = Formation(rows=5, cols=min(10, 7 + level))
+            formation.speed = 0.7 + level * 0.2
+            # rebuild barriers a bit damaged? keep for now
+            player.health = min(100, player.health + 25)
 
-        # ---- Update enemies ----
-        if not lost:
-            for enemy in enemies[:]:
-                enemy.move(enemy_vel)
-                enemy.move_lasers(laser_vel, player, particles)
+        # Draw
+        WIN.fill(BLACK)
+        # subtle scanline feel (optional light lines)
+        for y in range(0, HEIGHT, 4):
+            pygame.draw.line(WIN, (8, 8, 8), (0, y), (WIDTH, y))
 
-                if random.random() < enemy.shoot_chance:
-                    enemy.shoot()
+        formation.draw(WIN)
+        for bar in barriers:
+            bar.draw(WIN)
 
-                if collide(enemy, player):
-                    player.health -= 15
-                    spawn_explosion(
-                        enemy.x + enemy.get_width() // 2,
-                        enemy.y + enemy.get_height() // 2,
-                        particles,
-                        RED,
-                        count=20,
-                    )
-                    enemies.remove(enemy)
-                    score_ref[0] += 50
-                elif enemy.y + enemy.get_height() > HEIGHT:
-                    lives -= 1
-                    enemies.remove(enemy)
+        player.draw(WIN)
+        player.draw_health(WIN)
 
-            # Player lasers
-            player.move_lasers(-laser_vel, enemies, particles, score_ref)
-
-        # ---- Lose condition ----
-        if lives <= 0 or player.health <= 0:
-            if not lost:
-                lost = True
-                spawn_explosion(
-                    player.x + player.get_width() // 2,
-                    player.y + player.get_height() // 2,
-                    particles,
-                    YELLOW,
-                    count=40,
-                )
-
-        # ---- Update effects ----
-        for s in stars:
-            s.update()
-        for p in particles[:]:
-            p.update()
-            if p.life <= 0:
-                particles.remove(p)
-
-        # ---- Draw ----
-        WIN.blit(BG, (0, 0))
-        for s in stars:
-            s.draw(WIN)
-
-        for enemy in enemies:
-            enemy.draw(WIN)
-
-        if not lost or lost_timer < 30:
-            player.draw(WIN)
-
-        for p in particles:
-            p.draw(WIN)
-
-        draw_hud(lives, level, score_ref[0], player.health, player.max_health)
-
-        if lost:
-            draw_text(WIN, "YOU LOST!", FONT_LG, RED, WIDTH // 2, HEIGHT // 2 - 30, center=True)
+        draw_classic_hud(score_holder[0], hi_score, lives, level)
 
         pygame.display.update()
 
-    return False, score_ref[0], level, particles
-
 
 def main():
-    stars = [Star() for _ in range(110)]
-
+    hi_score = 0
     while True:
-        main_menu(stars)
-        go_to_gameover, score, level, particles = main_game(stars)
-        if go_to_gameover:
-            restart = game_over_screen(stars, score, level, particles)
-            if not restart:
+        main_menu(hi_score)
+        game_over, score, hi_score = run_game(hi_score)
+        if game_over:
+            if not game_over_screen(score, hi_score, 1):
                 break
-        else:
-            # ESC from game → back to menu
-            continue
+        # else ESC → menu again
 
 
 if __name__ == "__main__":
