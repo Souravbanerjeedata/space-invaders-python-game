@@ -1,17 +1,8 @@
-"""
-Space Invaders - Fixed Edition
-- Free 4-direction movement
-- Working SPACE laser
-- Local sound files in assets/
-- Gradual difficulty with hard caps (won't become impossible)
-"""
-
 import pygame
 import os
 import sys
 import random
 
-# ---------- Resource path (works for .py and for PyInstaller .exe) ----------
 def resource_path(relative):
     """Get absolute path to resource, works for dev and for PyInstaller."""
     try:
@@ -30,7 +21,7 @@ try:
 except Exception:
     pass
 
-# ========== WINDOW (fits on screen) ==========
+
 WIDTH, HEIGHT = 750, 550
 WIN = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Space Invaders")

@@ -6,12 +6,9 @@ Classic Space Invaders in Python + Pygame.
 
 ## Game Preview
 
-<!-- 
-  Add your screenshot or GIF here later.
-  ![Preview](preview.png)
--->
-
-**[Insert Game Preview Image Here]**
+<div align="center">
+    <img src="preview.gif" alt="Project Banner" width='750' height='550' >
+</div>
 
 ---
 
