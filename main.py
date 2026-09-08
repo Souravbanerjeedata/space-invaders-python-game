@@ -47,6 +47,8 @@ def main():
 
     ship = Ship(235, 450)
 
+    player_vel = 5
+
     def redraw_window():
         WIN.blit(BG, (0, 0))
         live_label = main_font.render(f"Lives: {lives}", 1, (255, 255, 255))
@@ -66,5 +68,15 @@ def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 run = False
+
+        keys = pygame.key.get_pressed()
+        if keys[pygame.K_LEFT] and ship.x - player_vel > 0:
+            ship.x -= player_vel
+        if keys[pygame.K_RIGHT] and ship.x + player_vel + 40 < WIDTH:
+            ship.x += player_vel
+        if keys[pygame.K_UP] and ship.y - player_vel > 0:
+            ship.y -= player_vel
+        if keys[pygame.K_DOWN] and ship.y + player_vel + 40 < HEIGHT:
+            ship.y += player_vel
 
 main()
