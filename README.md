@@ -1,15 +1,13 @@
-# Space Invaders – Classic Style
+# Space Invaders
 
-A classic arcade-style **Space Invaders** game in Python + Pygame.
-
-Designed to feel close to the original 1978 arcade game.
+Classic Space Invaders in Python + Pygame.
 
 ---
 
 ## Game Preview
 
 <!-- 
-  Add your screenshot or GIF here.
+  Add your screenshot or GIF here later.
   ![Preview](preview.png)
 -->
 
@@ -19,27 +17,39 @@ Designed to feel close to the original 1978 arcade game.
 
 ## Features
 
-- Classic black screen + green bunkers
-- Alien formation that moves left/right and drops (original style)
-- Destructible green barriers
-- Score / HI-SCORE display (classic layout)
-- Lives shown as small ships
-- Player laser shooting (fixed)
-- Simple retro sound effects (beeps)
-- Increasing difficulty per wave
-- Clean menu and game-over screens
+- Free 4-direction movement (Arrows + WASD)
+- Working laser (SPACE)
+- Local sound effects (shoot, hit, explosion) in `assets/`
+- Gradual difficulty with **hard caps** (won’t become impossible)
+- Lives + health bar + score
+- Menu and game-over screens
+- Window size 750×550 (fits on screen)
+- Ready for packaging into `.exe` (uses `resource_path`)
+
+---
+
+## Difficulty (capped)
+
+| Level | Enemies (approx) | Speed |
+|-------|------------------|--------|
+| 1     | 5                | 1.0    |
+| 3     | 11               | 1.24   |
+| 5     | 17               | 1.48   |
+| 7+    | **max 22**       | **max 2.4** |
+
+Enemy count and speed stop increasing after the caps.
 
 ---
 
 ## Controls
 
-| Action   | Keys                |
-|----------|---------------------|
-| Move     | Arrow keys or WASD  |
-| Shoot    | SPACE               |
-| Start    | SPACE               |
-| Restart  | R (on game over)    |
-| Quit     | ESC                 |
+| Action | Keys |
+|--------|------|
+| Move | Arrow keys or WASD |
+| Shoot | SPACE |
+| Start | SPACE |
+| Restart | R |
+| Quit / Menu | ESC |
 
 ---
 
@@ -52,11 +62,29 @@ python main.py
 
 ---
 
-## Notes
+## Assets (all local)
 
-- Sound is generated in code (no extra files). If your system has no audio device it still runs silently.
-- Assets use the original pixel ships/lasers from the repo, scaled for a clean classic look.
-- No particle glitter / modern effects — kept deliberately minimal and arcade-like.
+```
+assets/
+├── background-black.png
+├── pixel_ship_*.png
+├── pixel_laser_*.png
+├── shoot.wav
+├── hit.wav
+├── explosion.wav
+└── enemy_explode.wav
+```
+
+All images and sounds are stored inside the project so packaging to `.exe` works.
+
+---
+
+## Build .exe later (optional)
+
+```bash
+pip install pyinstaller
+pyinstaller --onefile --noconsole --add-data "assets;assets" main.py
+```
 
 ---
 

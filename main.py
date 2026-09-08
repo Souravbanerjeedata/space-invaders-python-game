@@ -1,171 +1,114 @@
 """
-Space Invaders - Classic Style
-Looks closer to the original arcade game.
+Space Invaders - Fixed Edition
+- Free 4-direction movement
+- Working SPACE laser
+- Local sound files in assets/
+- Gradual difficulty with hard caps (won't become impossible)
 """
 
 import pygame
 import os
 import sys
 import random
-import math
+
+# ---------- Resource path (works for .py and for PyInstaller .exe) ----------
+def resource_path(relative):
+    """Get absolute path to resource, works for dev and for PyInstaller."""
+    try:
+        base = sys._MEIPASS  # type: ignore  # PyInstaller temp folder
+    except Exception:
+        base = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base, relative)
 
 pygame.init()
 pygame.font.init()
 
-# Optional sound (won't crash if no audio device)
 SOUND_ENABLED = False
 try:
-    pygame.mixer.init()
+    pygame.mixer.init(frequency=22050, size=-16, channels=2, buffer=512)
     SOUND_ENABLED = True
 except Exception:
-    SOUND_ENABLED = False
+    pass
 
-# ==================== WINDOW ====================
-WIDTH, HEIGHT = 700, 750
+# ========== WINDOW (fits on screen) ==========
+WIDTH, HEIGHT = 750, 550
 WIN = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Space Invaders")
 FPS = 60
 
-ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+ASSETS = resource_path("assets")
 
-# Classic colors
+# Colors
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
-GREEN = (0, 255, 0)
+GREEN = (0, 255, 65)
 RED = (255, 50, 50)
-YELLOW = (255, 255, 0)
-CYAN = (0, 255, 255)
+YELLOW = (255, 220, 50)
+CYAN = (0, 220, 255)
 
-# Fonts - classic feel, not oversized
-FONT_SCORE = pygame.font.SysFont("courier", 28, bold=True)
-FONT_UI = pygame.font.SysFont("courier", 22, bold=True)
-FONT_TITLE = pygame.font.SysFont("courier", 48, bold=True)
-FONT_MED = pygame.font.SysFont("courier", 32, bold=True)
-FONT_SMALL = pygame.font.SysFont("courier", 18)
+FONT_UI = pygame.font.SysFont("consolas", 22)
+FONT_TITLE = pygame.font.SysFont("consolas", 42, bold=True)
+FONT_MED = pygame.font.SysFont("consolas", 28)
+FONT_SMALL = pygame.font.SysFont("consolas", 16)
 
 
-# ==================== LOAD ASSETS ====================
-def load(name, size=None):
-    img = pygame.image.load(os.path.join(ASSETS, name)).convert_alpha()
+# ========== LOAD IMAGES ==========
+def load_img(name, size=None):
+    path = os.path.join(ASSETS, name)
+    img = pygame.image.load(path).convert_alpha()
     if size:
         img = pygame.transform.scale(img, size)
     return img
 
-PLAYER_IMG = load("pixel_ship_yellow.png", (48, 40))
-# Tint player toward classic green look
-def tint_surface(surf, color):
-    tinted = surf.copy()
-    arr = pygame.surfarray.pixels3d(tinted)
-    # simple green preference
-    return tinted
+PLAYER_IMG = load_img("pixel_ship_yellow.png", (50, 42))
+ENEMY_SIZE = (38, 30)
+RED_IMG = load_img("pixel_ship_red_small.png", ENEMY_SIZE)
+GREEN_IMG = load_img("pixel_ship_green_small.png", ENEMY_SIZE)
+BLUE_IMG = load_img("pixel_ship_blue_small.png", ENEMY_SIZE)
 
-# Keep yellow player but scale well; enemies classic sizes
-ENEMY_W, ENEMY_H = 36, 28
-RED_IMG = load("pixel_ship_red_small.png", (ENEMY_W, ENEMY_H))
-GREEN_IMG = load("pixel_ship_green_small.png", (ENEMY_W, ENEMY_H))
-BLUE_IMG = load("pixel_ship_blue_small.png", (ENEMY_W, ENEMY_H))
+LASER_PLAYER = load_img("pixel_laser_yellow.png", (5, 18))
+LASER_RED = load_img("pixel_laser_red.png", (5, 16))
+LASER_GREEN = load_img("pixel_laser_green.png", (5, 16))
+LASER_BLUE = load_img("pixel_laser_blue.png", (5, 16))
 
-LASER_Y = load("pixel_laser_yellow.png", (4, 16))
-LASER_R = load("pixel_laser_red.png", (4, 14))
-LASER_G = load("pixel_laser_green.png", (4, 14))
-LASER_B = load("pixel_laser_blue.png", (4, 14))
+BG = load_img("background-black.png", (WIDTH, HEIGHT))
 
-BG = load("background-black.png", (WIDTH, HEIGHT))
 
-# Simple generated beeps (works without external files)
-def make_beep(freq=440, duration_ms=80, volume=0.25):
+# ========== LOAD LOCAL SOUNDS ==========
+def load_sound(name, volume=0.4):
     if not SOUND_ENABLED:
         return None
+    path = os.path.join(ASSETS, name)
+    if not os.path.isfile(path):
+        print(f"[warn] sound not found: {path}")
+        return None
     try:
-        import array
-        sample_rate = 22050
-        n_samples = int(sample_rate * duration_ms / 1000)
-        if n_samples < 1:
-            return None
-        period = max(1, sample_rate // freq)
-        amp = int(32000 * volume)
-        samples = array.array("h")
-        for i in range(n_samples):
-            # square wave with quick fade
-            val = amp if ((i // (period // 2)) % 2 == 0) else -amp
-            fade = max(0.0, 1.0 - (i / n_samples))
-            samples.append(int(val * fade))
-        return pygame.mixer.Sound(buffer=samples)
-    except Exception:
+        s = pygame.mixer.Sound(path)
+        s.set_volume(volume)
+        return s
+    except Exception as e:
+        print(f"[warn] could not load sound {name}: {e}")
         return None
 
-SHOOT_SOUND = make_beep(880, 50, 0.2)
-HIT_SOUND = make_beep(200, 90, 0.3)
-DIE_SOUND = make_beep(90, 180, 0.35)
-INVADER_SOUND = make_beep(160, 30, 0.12)
+SND_SHOOT = load_sound("shoot.wav", 0.35)
+SND_EXPLODE = load_sound("explosion.wav", 0.45)
+SND_HIT = load_sound("hit.wav", 0.4)
+SND_ENEMY_DIE = load_sound("enemy_explode.wav", 0.4)
 
 
-def play(sound):
-    if sound and SOUND_ENABLED:
+def play(snd):
+    if snd and SOUND_ENABLED:
         try:
-            sound.play()
+            snd.play()
         except Exception:
             pass
 
 
-# ==================== BARRIERS (classic green bunkers) ====================
-class Barrier:
-    def __init__(self, x, y):
-        self.x = x
-        self.y = y
-        self.w = 70
-        self.h = 50
-        # Pixel damage map (classic look)
-        self.grid_w = 14
-        self.grid_h = 10
-        self.cell = 5
-        self.blocks = [[1 for _ in range(self.grid_w)] for _ in range(self.grid_h)]
-        # Carve classic shape (arch)
-        for row in range(self.grid_h):
-            for col in range(self.grid_w):
-                # top corners cut
-                if row < 2 and (col < 2 or col > self.grid_w - 3):
-                    self.blocks[row][col] = 0
-                # bottom arch hole
-                if row > 5 and 3 < col < 10:
-                    self.blocks[row][col] = 0
-
-    def draw(self, surf):
-        for row in range(self.grid_h):
-            for col in range(self.grid_w):
-                if self.blocks[row][col]:
-                    pygame.draw.rect(
-                        surf, GREEN,
-                        (self.x + col * self.cell, self.y + row * self.cell, self.cell, self.cell)
-                    )
-
-    def hit(self, lx, ly, lw, lh):
-        """Destroy blocks that the laser touches. Returns True if any block hit."""
-        hit_any = False
-        for row in range(self.grid_h):
-            for col in range(self.grid_w):
-                if not self.blocks[row][col]:
-                    continue
-                bx = self.x + col * self.cell
-                by = self.y + row * self.cell
-                if (lx < bx + self.cell and lx + lw > bx and
-                        ly < by + self.cell and ly + lh > by):
-                    self.blocks[row][col] = 0
-                    # also damage neighbors a bit
-                    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                        rr, cc = row + dr, col + dc
-                        if 0 <= rr < self.grid_h and 0 <= cc < self.grid_w:
-                            if random.random() < 0.5:
-                                self.blocks[rr][cc] = 0
-                    hit_any = True
-        return hit_any
-
-
-# ==================== LASER ====================
+# ========== LASER ==========
 class Laser:
     def __init__(self, x, y, img, vel):
-        self.x = x
-        self.y = y
+        self.x = float(x)
+        self.y = float(y)
         self.img = img
         self.vel = vel
         self.mask = pygame.mask.from_surface(img)
@@ -175,14 +118,11 @@ class Laser:
     def move(self):
         self.y += self.vel
 
-    def draw(self, window):
-        window.blit(self.img, (int(self.x), int(self.y)))
+    def draw(self, win):
+        win.blit(self.img, (int(self.x), int(self.y)))
 
     def off_screen(self):
-        return self.y < -20 or self.y > HEIGHT + 20
-
-    def rect(self):
-        return pygame.Rect(self.x, self.y, self.w, self.h)
+        return self.y < -40 or self.y > HEIGHT + 40
 
 
 def collide(a, b):
@@ -190,7 +130,7 @@ def collide(a, b):
     return a.mask.overlap(b.mask, offset) is not None
 
 
-# ==================== SHIPS ====================
+# ========== SHIP ==========
 class Ship:
     COOLDOWN = 25
 
@@ -217,82 +157,76 @@ class Ship:
         elif self.cool_down_counter > 0:
             self.cool_down_counter += 1
 
-    def draw(self, window):
-        window.blit(self.ship_img, (int(self.x), int(self.y)))
+    def draw(self, win):
+        win.blit(self.ship_img, (int(self.x), int(self.y)))
         for laser in self.lasers:
-            laser.draw(window)
+            laser.draw(win)
 
 
 class Player(Ship):
     def __init__(self, x, y):
         super().__init__(x, y, health=100)
         self.ship_img = PLAYER_IMG
-        self.laser_img = LASER_Y
+        self.laser_img = LASER_PLAYER
         self.mask = pygame.mask.from_surface(self.ship_img)
-        self.COOLDOWN = 20
+        self.COOLDOWN = 16  # responsive shooting
 
     def shoot(self):
         if self.cool_down_counter == 0:
             lx = self.x + self.get_width() // 2 - self.laser_img.get_width() // 2
             ly = self.y - 12
-            self.lasers.append(Laser(lx, ly, self.laser_img, -8))
+            self.lasers.append(Laser(lx, ly, self.laser_img, -10))
             self.cool_down_counter = 1
-            play(SHOOT_SOUND)
+            play(SND_SHOOT)
+            return True
+        return False
 
-    def move_lasers(self, enemies, barriers, score_holder):
+    def move_lasers(self, enemies, score_ref):
         self.cooldown()
         for laser in self.lasers[:]:
             laser.move()
             if laser.off_screen():
                 self.lasers.remove(laser)
                 continue
-
-            # Barriers
-            hit_barrier = False
-            for bar in barriers:
-                if bar.hit(laser.x, laser.y, laser.w, laser.h):
-                    hit_barrier = True
-                    break
-            if hit_barrier:
-                if laser in self.lasers:
-                    self.lasers.remove(laser)
-                continue
-
-            # Enemies
+            hit = False
             for enemy in enemies[:]:
                 if collide(laser, enemy):
-                    play(HIT_SOUND)
+                    play(SND_ENEMY_DIE)
                     enemies.remove(enemy)
-                    score_holder[0] += 100
-                    if laser in self.lasers:
-                        self.lasers.remove(laser)
+                    score_ref[0] += 100
+                    hit = True
                     break
+            if hit and laser in self.lasers:
+                self.lasers.remove(laser)
 
-    def draw_health(self, window):
-        # Small bar under ship, stays on screen
+    def draw_healthbar(self, win):
         bw = self.get_width()
         bh = 5
         bx = self.x
-        by = min(self.y + self.get_height() + 4, HEIGHT - 12)
+        by = self.y + self.get_height() + 5
+        if by + bh > HEIGHT - 4:
+            by = self.y - 10
         ratio = max(0.0, self.health / self.max_health)
-        pygame.draw.rect(window, (40, 40, 40), (bx, by, bw, bh))
+        pygame.draw.rect(win, (40, 40, 40), (bx, by, bw, bh))
         col = GREEN if ratio > 0.35 else RED
-        pygame.draw.rect(window, col, (bx, by, int(bw * ratio), bh))
+        pygame.draw.rect(win, col, (bx, by, int(bw * ratio), bh))
 
 
 class Enemy(Ship):
-    MAP = {
-        "red": (RED_IMG, LASER_R),
-        "green": (GREEN_IMG, LASER_G),
-        "blue": (BLUE_IMG, LASER_B),
+    COLOR_MAP = {
+        "red": (RED_IMG, LASER_RED),
+        "green": (GREEN_IMG, LASER_GREEN),
+        "blue": (BLUE_IMG, LASER_BLUE),
     }
 
     def __init__(self, x, y, color):
         super().__init__(x, y)
         self.color = color
-        self.ship_img, self.laser_img = self.MAP[color]
+        self.ship_img, self.laser_img = self.COLOR_MAP[color]
         self.mask = pygame.mask.from_surface(self.ship_img)
-        self.direction = 1  # for formation movement
+
+    def move(self, vel):
+        self.y += vel
 
     def shoot(self):
         if self.cool_down_counter == 0:
@@ -301,126 +235,63 @@ class Enemy(Ship):
             self.lasers.append(Laser(lx, ly, self.laser_img, 5))
             self.cool_down_counter = 1
 
-    def move_lasers(self, player, barriers):
+    def move_lasers(self, player):
         self.cooldown()
         for laser in self.lasers[:]:
             laser.move()
             if laser.off_screen():
                 self.lasers.remove(laser)
-                continue
-
-            for bar in barriers:
-                if bar.hit(laser.x, laser.y, laser.w, laser.h):
-                    if laser in self.lasers:
-                        self.lasers.remove(laser)
-                    break
-            else:
-                if collide(laser, player):
-                    player.health -= 15
-                    play(HIT_SOUND)
-                    if laser in self.lasers:
-                        self.lasers.remove(laser)
+            elif collide(laser, player):
+                player.health -= 12
+                play(SND_HIT)
+                if laser in self.lasers:
+                    self.lasers.remove(laser)
 
 
-# ==================== FORMATION (classic row movement) ====================
-class Formation:
-    """Classic left-right then drop movement for the alien grid."""
-    def __init__(self, rows=5, cols=8):
-        self.enemies = []
-        self.dir = 1  # 1 right, -1 left
-        self.speed = 0.6
-        self.drop = 18
-        self.rows = rows
-        self.cols = cols
-        self.spawn()
-
-    def spawn(self):
-        self.enemies.clear()
-        start_x = 80
-        start_y = 90
-        gap_x = 55
-        gap_y = 42
-        colors = ["red", "red", "green", "green", "blue"]
-        for r in range(self.rows):
-            for c in range(self.cols):
-                x = start_x + c * gap_x
-                y = start_y + r * gap_y
-                color = colors[r % len(colors)]
-                self.enemies.append(Enemy(x, y, color))
-
-    def update(self):
-        if not self.enemies:
-            return
-
-        # Find edges
-        min_x = min(e.x for e in self.enemies)
-        max_x = max(e.x + e.get_width() for e in self.enemies)
-
-        should_drop = False
-        if self.dir > 0 and max_x >= WIDTH - 20:
-            should_drop = True
-            self.dir = -1
-        elif self.dir < 0 and min_x <= 20:
-            should_drop = True
-            self.dir = 1
-
-        for e in self.enemies:
-            if should_drop:
-                e.y += self.drop
-            e.x += self.speed * self.dir
-
-    def draw(self, window):
-        for e in self.enemies:
-            e.draw(window)
+# ========== DIFFICULTY (capped) ==========
+def wave_enemy_count(level):
+    """Gradual growth, hard cap so screen never fills completely."""
+    # level 1: 5, then +3 each level, max 22
+    return min(5 + (level - 1) * 3, 22)
 
 
-# ==================== UI ====================
-def draw_classic_hud(score, hi_score, lives, level):
-    # Classic top layout similar to original
-    draw = FONT_SCORE.render
-    s1 = draw(f"SCORE<1>", True, WHITE)
-    s2 = draw(f"{score:04d}", True, WHITE)
-    hi = draw(f"HI-SCORE", True, WHITE)
-    hi_v = draw(f"{hi_score:04d}", True, WHITE)
-
-    WIN.blit(s1, (30, 12))
-    WIN.blit(s2, (50, 42))
-    WIN.blit(hi, (WIDTH // 2 - hi.get_width() // 2, 12))
-    WIN.blit(hi_v, (WIDTH // 2 - hi_v.get_width() // 2, 42))
-
-    # Lives as small ships at bottom left
-    lives_label = FONT_SMALL.render(f"{lives}", True, WHITE)
-    WIN.blit(lives_label, (20, HEIGHT - 28))
-    for i in range(max(0, lives - 1)):
-        small = pygame.transform.scale(PLAYER_IMG, (24, 20))
-        WIN.blit(small, (45 + i * 30, HEIGHT - 30))
-
-    # Level
-    lvl = FONT_SMALL.render(f"LEVEL {level}", True, WHITE)
-    WIN.blit(lvl, (WIDTH - lvl.get_width() - 20, HEIGHT - 28))
+def wave_enemy_speed(level):
+    """Slightly faster each level, hard cap."""
+    # 1.0 → increases by 0.12, max 2.4
+    return min(1.0 + (level - 1) * 0.12, 2.4)
 
 
-# ==================== SCREENS ====================
-def main_menu(hi_score):
+# ========== UI ==========
+def draw_text(text, font, color, x, y, center=False):
+    img = font.render(text, True, color)
+    if center:
+        x -= img.get_width() // 2
+    WIN.blit(img, (x, y))
+
+
+def draw_hud(lives, level, score):
+    bar = pygame.Surface((WIDTH, 34), pygame.SRCALPHA)
+    bar.fill((0, 0, 0, 170))
+    WIN.blit(bar, (0, 0))
+    draw_text(f"Lives: {lives}", FONT_UI, WHITE, 12, 7)
+    draw_text(f"Level: {level}", FONT_UI, CYAN, WIDTH // 2, 7, center=True)
+    sc = FONT_UI.render(f"Score: {score}", True, YELLOW)
+    WIN.blit(sc, (WIDTH - sc.get_width() - 12, 7))
+
+
+# ========== MENUS ==========
+def main_menu():
     clock = pygame.time.Clock()
     while True:
         clock.tick(FPS)
-        WIN.fill(BLACK)
+        WIN.blit(BG, (0, 0))
+        ov = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        ov.fill((0, 0, 0, 90))
+        WIN.blit(ov, (0, 0))
 
-        title = FONT_TITLE.render("SPACE INVADERS", True, GREEN)
-        WIN.blit(title, (WIDTH // 2 - title.get_width() // 2, 180))
-
-        sub = FONT_UI.render("CLASSIC STYLE", True, WHITE)
-        WIN.blit(sub, (WIDTH // 2 - sub.get_width() // 2, 250))
-
-        prompt = FONT_UI.render("PRESS SPACE TO START", True, YELLOW)
-        WIN.blit(prompt, (WIDTH // 2 - prompt.get_width() // 2, 380))
-
-        hi = FONT_SMALL.render(f"HI-SCORE  {hi_score:04d}", True, WHITE)
-        WIN.blit(hi, (WIDTH // 2 - hi.get_width() // 2, 450))
-
-        controls = FONT_SMALL.render("ARROWS / WASD  MOVE    SPACE  FIRE    ESC  QUIT", True, (120, 120, 120))
-        WIN.blit(controls, (WIDTH // 2 - controls.get_width() // 2, HEIGHT - 60))
+        draw_text("SPACE INVADERS", FONT_TITLE, GREEN, WIDTH // 2, HEIGHT // 2 - 90, center=True)
+        draw_text("Press SPACE to start", FONT_MED, WHITE, WIDTH // 2, HEIGHT // 2 - 10, center=True)
+        draw_text("Arrows / WASD = Move   |   SPACE = Shoot   |   ESC = Quit", FONT_SMALL, (140, 140, 140), WIDTH // 2, HEIGHT - 40, center=True)
 
         pygame.display.update()
 
@@ -436,26 +307,19 @@ def main_menu(hi_score):
                     sys.exit()
 
 
-def game_over_screen(score, hi_score, level):
+def game_over_screen(score, level):
     clock = pygame.time.Clock()
     while True:
         clock.tick(FPS)
-        WIN.fill(BLACK)
+        WIN.blit(BG, (0, 0))
+        ov = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        ov.fill((30, 0, 0, 160))
+        WIN.blit(ov, (0, 0))
 
-        over = FONT_TITLE.render("GAME OVER", True, RED)
-        WIN.blit(over, (WIDTH // 2 - over.get_width() // 2, 220))
-
-        sc = FONT_MED.render(f"SCORE  {score:04d}", True, WHITE)
-        WIN.blit(sc, (WIDTH // 2 - sc.get_width() // 2, 320))
-
-        hi = FONT_UI.render(f"HI-SCORE  {hi_score:04d}", True, YELLOW)
-        WIN.blit(hi, (WIDTH // 2 - hi.get_width() // 2, 370))
-
-        lvl = FONT_SMALL.render(f"LEVEL REACHED  {level}", True, WHITE)
-        WIN.blit(lvl, (WIDTH // 2 - lvl.get_width() // 2, 420))
-
-        prompt = FONT_UI.render("PRESS R TO RESTART   ESC TO QUIT", True, GREEN)
-        WIN.blit(prompt, (WIDTH // 2 - prompt.get_width() // 2, 520))
+        draw_text("GAME OVER", FONT_TITLE, RED, WIDTH // 2, HEIGHT // 2 - 80, center=True)
+        draw_text(f"Score: {score}", FONT_MED, YELLOW, WIDTH // 2, HEIGHT // 2 - 15, center=True)
+        draw_text(f"Level: {level}", FONT_UI, WHITE, WIDTH // 2, HEIGHT // 2 + 25, center=True)
+        draw_text("Press R to Restart    ESC to Quit", FONT_SMALL, GREEN, WIDTH // 2, HEIGHT // 2 + 80, center=True)
 
         pygame.display.update()
 
@@ -470,112 +334,123 @@ def game_over_screen(score, hi_score, level):
                     return False
 
 
-def run_game(hi_score):
+# ========== MAIN GAME ==========
+def main_game():
     clock = pygame.time.Clock()
-    player = Player(WIDTH // 2 - 24, HEIGHT - 100)
-    formation = Formation(rows=5, cols=8)
-    barriers = [
-        Barrier(90, HEIGHT - 220),
-        Barrier(250, HEIGHT - 220),
-        Barrier(410, HEIGHT - 220),
-        Barrier(570, HEIGHT - 220),
-    ]
 
-    score = 0
-    score_holder = [0]
-    lives = 3
-    level = 1
-    enemy_shoot_timer = 0
-    invader_step_timer = 0
+    level = 0
+    lives = 5
+    score_ref = [0]
+
+    enemies = []
+    player_vel = 5
+
+    player = Player(WIDTH // 2 - 25, HEIGHT - 80)
+
+    lost = False
+    lost_count = 0
+
+    # For reliable shooting: track if space was just pressed
+    space_was_down = False
 
     while True:
         clock.tick(FPS)
-        score = score_holder[0]
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                return False, score, hi_score  # back to menu
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    return False, score_ref[0], level
+                # Primary shoot trigger (keydown = reliable single shots)
+                if event.key == pygame.K_SPACE and not lost:
+                    player.shoot()
 
-        # Input
         keys = pygame.key.get_pressed()
-        speed = 5
-        if (keys[pygame.K_LEFT] or keys[pygame.K_a]) and player.x > 10:
-            player.x -= speed
-        if (keys[pygame.K_RIGHT] or keys[pygame.K_d]) and player.x + player.get_width() < WIDTH - 10:
-            player.x += speed
-        if keys[pygame.K_SPACE]:
-            player.shoot()
 
-        # Formation movement (classic)
-        invader_step_timer += 1
-        step_every = max(8, 28 - level * 2)
-        if invader_step_timer >= step_every:
-            invader_step_timer = 0
-            formation.speed = 0.8 + level * 0.15
-            formation.update()
-            play(INVADER_SOUND)
+        if lost:
+            lost_count += 1
+            if lost_count > FPS * 2:
+                return True, score_ref[0], level
+        else:
+            # Free 4-direction movement
+            if (keys[pygame.K_LEFT] or keys[pygame.K_a]) and player.x - player_vel > 0:
+                player.x -= player_vel
+            if (keys[pygame.K_RIGHT] or keys[pygame.K_d]) and player.x + player_vel + player.get_width() < WIDTH:
+                player.x += player_vel
+            if (keys[pygame.K_UP] or keys[pygame.K_w]) and player.y - player_vel > 40:
+                player.y -= player_vel
+            if (keys[pygame.K_DOWN] or keys[pygame.K_s]) and player.y + player_vel + player.get_height() < HEIGHT - 8:
+                player.y += player_vel
 
-        # Enemy shooting
-        enemy_shoot_timer += 1
-        if enemy_shoot_timer > max(20, 50 - level * 3) and formation.enemies:
-            enemy_shoot_timer = 0
-            shooter = random.choice(formation.enemies)
-            shooter.shoot()
+            # Also allow hold-to-fire (with cooldown)
+            if keys[pygame.K_SPACE]:
+                player.shoot()
 
-        # Update lasers
-        player.move_lasers(formation.enemies, barriers, score_holder)
-        for e in formation.enemies:
-            e.move_lasers(player, barriers)
+            # New wave
+            if len(enemies) == 0:
+                level += 1
+                count = wave_enemy_count(level)
+                speed = wave_enemy_speed(level)
+                for _ in range(count):
+                    ex = random.randrange(30, WIDTH - 50)
+                    ey = random.randrange(-900 - level * 40, -40)
+                    color = random.choice(["red", "blue", "green"])
+                    enemies.append(Enemy(ex, ey, color))
+                # store speed for this wave
+                enemy_vel = speed
+            else:
+                enemy_vel = wave_enemy_speed(level)
 
-        # Collision ship vs player
-        for e in formation.enemies[:]:
-            if collide(e, player) or e.y + e.get_height() > player.y + 10:
-                play(DIE_SOUND)
-                lives -= 1
-                formation.enemies.remove(e)
-                player.health -= 30
-                if lives <= 0 or player.health <= 0:
-                    hi_score = max(hi_score, score_holder[0])
-                    return True, score_holder[0], hi_score
+            # Enemies
+            for enemy in enemies[:]:
+                enemy.move(enemy_vel)
+                enemy.move_lasers(player)
 
-        # Next wave
-        if not formation.enemies:
-            level += 1
-            formation = Formation(rows=5, cols=min(10, 7 + level))
-            formation.speed = 0.7 + level * 0.2
-            # rebuild barriers a bit damaged? keep for now
-            player.health = min(100, player.health + 25)
+                if random.randrange(0, 4 * 60) == 1:
+                    enemy.shoot()
+
+                if collide(enemy, player):
+                    player.health -= 15
+                    play(SND_EXPLODE)
+                    enemies.remove(enemy)
+                    score_ref[0] += 50
+                elif enemy.y + enemy.get_height() > HEIGHT:
+                    lives -= 1
+                    enemies.remove(enemy)
+
+            player.move_lasers(enemies, score_ref)
+
+            if lives <= 0 or player.health <= 0:
+                lost = True
+                play(SND_EXPLODE)
 
         # Draw
-        WIN.fill(BLACK)
-        # subtle scanline feel (optional light lines)
-        for y in range(0, HEIGHT, 4):
-            pygame.draw.line(WIN, (8, 8, 8), (0, y), (WIDTH, y))
+        WIN.blit(BG, (0, 0))
 
-        formation.draw(WIN)
-        for bar in barriers:
-            bar.draw(WIN)
+        for enemy in enemies:
+            enemy.draw(WIN)
 
-        player.draw(WIN)
-        player.draw_health(WIN)
+        if not lost or lost_count < 25:
+            player.draw(WIN)
+            player.draw_healthbar(WIN)
 
-        draw_classic_hud(score_holder[0], hi_score, lives, level)
+        draw_hud(lives, level, score_ref[0])
+
+        if lost:
+            draw_text("YOU LOST!", FONT_TITLE, RED, WIDTH // 2, HEIGHT // 2 - 20, center=True)
 
         pygame.display.update()
 
 
 def main():
-    hi_score = 0
     while True:
-        main_menu(hi_score)
-        game_over, score, hi_score = run_game(hi_score)
+        main_menu()
+        game_over, score, level = main_game()
         if game_over:
-            if not game_over_screen(score, hi_score, 1):
+            if not game_over_screen(score, level):
                 break
-        # else ESC → menu again
 
 
 if __name__ == "__main__":
